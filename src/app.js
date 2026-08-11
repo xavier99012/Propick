@@ -1269,7 +1269,7 @@ class Component extends DCLogic {
   async checkYPostResumenPallet(operador, ruta, pnum) {
     const itemStatus = this.state.armadoPorOperador[operador] || {};
     const verifOp = this.state.verificacionRegistro[operador] || {};
-    const prefix = 'r' + ruta + '_p' + pnum + '_i';
+    const prefix = 'r' + ruta + '_p' + pnum + '_m';
     const keys = Object.keys(itemStatus).filter(k => k.startsWith(prefix));
     if (keys.length === 0) return;
     const todasVerificadas = keys.every(k => verifOp[k] && (verifOp[k].estado === 'correcto' || verifOp[k].estado === 'corregido'));
