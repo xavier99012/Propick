@@ -686,7 +686,7 @@ class Component extends DCLogic {
 
     this.logMsg('Guardando ' + rows.length + ' líneas en Propick_Asignaciones (en un solo lote)...', 'info');
     try {
-      const resp = await this.fetchConTimeout(Component.POST_ASIGNACIONES_FLOW_URL, { ProcesoID: procesoId, Rows: rows }, 60000);
+      const resp = await this.fetchConTimeout(Component.POST_ASIGNACIONES_FLOW_URL, { ProcesoID: procesoId, Rows: rows }, 240000);
       if (!resp.ok) {
         let bodyText = '';
         try { bodyText = await resp.text(); } catch (e2) { /* sin cuerpo de respuesta */ }
