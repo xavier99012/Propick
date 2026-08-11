@@ -888,7 +888,7 @@ class Component extends DCLogic {
         const ok = await this.waitForLoadPyodide();
         if (!ok) throw new Error('El script de Pyodide no cargó a tiempo. Verifica tu conexión a internet y recarga la página.');
       }
-      this.pyodide = await window.loadPyodide();
+      this.pyodide = await window.loadPyodide({ indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/' });
       this.logMsg('Cargando pandas...', 'info');
       await this.pyodide.loadPackage(['pandas']);
       try {
