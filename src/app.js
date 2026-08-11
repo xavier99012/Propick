@@ -1416,6 +1416,10 @@ class Component extends DCLogic {
   async confirmAddProducto() {
     const np = this.state.newProducto;
     if (!np.Codigo.trim() || !np.Nombre_Material.trim() || !np.IsPicked || !np.Categoria || !np.Grupo || !np.Volumen) { return; }
+    if (!(Number(np.UnitBox) > 0) || !(Number(np.BoxPallet) > 0)) {
+      this.setState({ productosError: 'UnitBox y BoxPallet son obligatorios y deben ser mayores a 0.' });
+      return;
+    }
     const zona = Component.computeZona(np.Categoria, np.Grupo, np.Volumen);
     const producto = { Codigo: np.Codigo, Nombre_Material: np.Nombre_Material, IsPicked: np.IsPicked, Categoria: np.Categoria, Grupo: np.Grupo, Volumen: np.Volumen, ...zona, UnitBox: np.UnitBox, BoxPallet: np.BoxPallet };
     this.setState({ productoSaving: true, productosError: '' });
@@ -1452,6 +1456,10 @@ class Component extends DCLogic {
     const s = this.state;
     const row = s.productos[s.productoEditIdx];
     if (!row.Codigo.trim() || !row.Nombre_Material.trim() || !row.IsPicked || !row.Categoria || !row.Grupo || !row.Volumen) { return; }
+    if (!(Number(row.UnitBox) > 0) || !(Number(row.BoxPallet) > 0)) {
+      this.setState({ productosError: 'UnitBox y BoxPallet son obligatorios y deben ser mayores a 0.' });
+      return;
+    }
     if (!row.ItemInternalId) { this.setState({ productosError: 'Este producto no tiene ID de base de datos (recarga la lista antes de editarlo).' }); return; }
     this.setState({ productoSaving: true, productosError: '' });
     try {
