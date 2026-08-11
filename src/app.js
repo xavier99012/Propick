@@ -684,21 +684,28 @@ class Component extends DCLogic {
       return;
     }
 
-    this.logMsg('Guardando ' + rows.length + ' líneas en Propick_Asignaciones (en un solo lote)...', 'info');
+    const CHUNK_SIZE = 40;
+    const chunks = [];
+    for (let i = 0; i < rows.length; i += CHUNK_SIZE) chunks.push(rows.slice(i, i + CHUNK_SIZE));
+    this.logMsg('Guardando ' + rows.length + ' líneas en Propick_Asignaciones (en ' + chunks.length + ' lotes de hasta ' + CHUNK_SIZE + ')...', 'info');
+    let guardadas = 0;
     try {
-      const resp = await this.fetchConTimeout(Component.POST_ASIGNACIONES_FLOW_URL, { ProcesoID: procesoId, Rows: rows }, 240000);
-      if (!resp.ok) {
-        let bodyText = '';
-        try { bodyText = await resp.text(); } catch (e2) { /* sin cuerpo de respuesta */ }
-        console.error('POST_Asignaciones falló', resp.status, bodyText, rows[0]);
-        throw new Error('HTTP ' + resp.status + (bodyText ? ' — ' + bodyText.slice(0, 500) : ''));
+      for (let i = 0; i < chunks.length; i++) {
+        const resp = await this.fetchConTimeout(Component.POST_ASIGNACIONES_FLOW_URL, { ProcesoID: procesoId, Rows: chunks[i] }, 90000);
+        if (!resp.ok) {
+          let bodyText = '';
+          try { bodyText = await resp.text(); } catch (e2) { /* sin cuerpo de respuesta */ }
+          console.error('POST_Asignaciones falló (lote ' + (i + 1) + '/' + chunks.length + ')', resp.status, bodyText, chunks[i][0]);
+          throw new Error('lote ' + (i + 1) + '/' + chunks.length + ' — HTTP ' + resp.status + (bodyText ? ' — ' + bodyText.slice(0, 500) : ''));
+        }
+        guardadas += chunks[i].length;
+        this.logMsg('✅ Lote ' + (i + 1) + '/' + chunks.length + ' guardado (' + guardadas + '/' + rows.length + ' líneas)', 'ok');
       }
-      this.logMsg('✅ ' + rows.length + ' líneas guardadas en Propick_Asignaciones', 'ok');
       this.setState({ sqlSyncStatus: 'ok', sqlSyncDetalle: procesoId + ' · ' + rows.length + ' líneas guardadas' });
     } catch (e) {
       const msg = e.name === 'AbortError' ? 'tiempo de espera agotado' : e.message;
       this.logMsg('⚠️ Error guardando el lote en Propick_Asignaciones: ' + msg, 'err');
-      this.setState({ sqlSyncStatus: 'error', sqlSyncDetalle: 'Encabezado guardado, pero falló el lote de líneas — ' + msg });
+      this.setState({ sqlSyncStatus: guardadas > 0 ? 'partial' : 'error', sqlSyncDetalle: 'Encabezado guardado, ' + guardadas + '/' + rows.length + ' líneas guardadas — ' + msg });
     }
   }
 
