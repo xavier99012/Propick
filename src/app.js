@@ -673,15 +673,17 @@ class Component extends DCLogic {
     } catch (e) {
       const msg = e.name === 'AbortError' ? 'tiempo de espera agotado (posible URL de flujo sin firma/sig o inactivo)' : e.message;
       this.logMsg('❌ Error guardando encabezado en Propick_Subida_de_arme: ' + msg, 'err');
-      this.setState({ sqlSyncStatus: 'error', sqlSyncDetalle: 'Falló el guardado del encabezado: ' + msg });
-      return;
+      const detalle = 'Falló el guardado del encabezado: ' + msg;
+      this.setState({ sqlSyncStatus: 'error', sqlSyncDetalle: detalle });
+      return { status: 'error', detalle };
     }
 
     const rows = this.buildAsignacionesRows();
     if (rows.length === 0) {
       this.logMsg('⚠️ No hay líneas de asignación para guardar (CSV vacío o no generado).', 'err');
-      this.setState({ sqlSyncStatus: 'error', sqlSyncDetalle: 'Encabezado guardado, pero no se encontraron líneas de asignación.' });
-      return;
+      const detalle = 'Encabezado guardado, pero no se encontraron líneas de asignación.';
+      this.setState({ sqlSyncStatus: 'error', sqlSyncDetalle: detalle });
+      return { status: 'error', detalle };
     }
 
     const CHUNK_SIZE = 80;
@@ -701,11 +703,16 @@ class Component extends DCLogic {
         guardadas += chunks[i].length;
         this.logMsg('✅ Lote ' + (i + 1) + '/' + chunks.length + ' guardado (' + guardadas + '/' + rows.length + ' líneas)', 'ok');
       }
-      this.setState({ sqlSyncStatus: 'ok', sqlSyncDetalle: procesoId + ' · ' + rows.length + ' líneas guardadas' });
+      const okDetalle = procesoId + ' · ' + rows.length + ' líneas guardadas';
+      this.setState({ sqlSyncStatus: 'ok', sqlSyncDetalle: okDetalle });
+      return { status: 'ok', detalle: okDetalle };
     } catch (e) {
       const msg = e.name === 'AbortError' ? 'tiempo de espera agotado' : e.message;
       this.logMsg('⚠️ Error guardando el lote en Propick_Asignaciones: ' + msg, 'err');
-      this.setState({ sqlSyncStatus: guardadas > 0 ? 'partial' : 'error', sqlSyncDetalle: 'Encabezado guardado, ' + guardadas + '/' + rows.length + ' líneas guardadas — ' + msg });
+      const detalle = 'Encabezado guardado, ' + guardadas + '/' + rows.length + ' líneas guardadas — ' + msg;
+      const status = guardadas > 0 ? 'partial' : 'error';
+      this.setState({ sqlSyncStatus: status, sqlSyncDetalle: detalle });
+      return { status, detalle };
     }
   }
 
@@ -873,6 +880,12 @@ class Component extends DCLogic {
     this.resumenEnviado = {};
     this.procesoArmadoIds = {};
     this.loadingUltimoProceso = false;
+    window.addEventListener('beforeunload', (e) => {
+      if (this.state.sqlSyncStatus === 'pending') {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    });
   }
 
   scrollConsola() {
@@ -989,22 +1002,29 @@ class Component extends DCLogic {
       }
 
       this.lastResultado = resultado;
-      this.logMsg('✅ Proceso completado: ' + resultado.total_pallets + ' pallets, ' + resultado.total_cajas + ' cajas, ' + resultado.total_auxiliares + ' auxiliares', 'ok');
-      this.setState({ procesoResultado: { ok: true, titulo: 'Proceso completado', detalle: resultado.total_pallets + ' pallets · ' + resultado.total_cajas + ' cajas · ' + resultado.total_auxiliares + ' auxiliares' } });
+      this.logMsg('Motor completado: ' + resultado.total_pallets + ' pallets, ' + resultado.total_cajas + ' cajas, ' + resultado.total_auxiliares + ' auxiliares', 'ok');
 
       const csvTexto = new TextDecoder('utf-8').decode(this.pyodide.FS.readFile('/tmp/salida.csv'));
-      this.csvAlmacenado = csvTexto; // simula el guardado en base de datos (tabla Asignacion)
-      this.logMsg('💾 Asignación guardada en base de datos', 'ok');
+      this.csvAlmacenado = csvTexto;
+
+      this.setState({ statusText: 'Guardando en base de datos...' });
+      const sql = await this.guardarEnSQL(resultado);
+
+      const resumenTxt = resultado.total_pallets + ' pallets · ' + resultado.total_cajas + ' cajas · ' + resultado.total_auxiliares + ' auxiliares';
+      const procesoResultado = sql.status === 'ok'
+        ? { ok: true, titulo: 'Proceso completado', detalle: resumenTxt }
+        : { ok: false, titulo: 'Proceso completado con errores al guardar', detalle: resumenTxt + ' — ' + sql.detalle };
+      this.logMsg(sql.status === 'ok' ? '✅ Proceso completado' : '⚠️ Proceso completado, pero hubo problemas guardando en SQL', sql.status === 'ok' ? 'ok' : 'err');
 
       this.setState(s => ({
         stats: { pallets: resultado.total_pallets, cajas: resultado.total_cajas, aux: resultado.total_auxiliares },
         auxSummaryRaw: resultado.resumen,
         resultsVisible: true,
         procesarBusy: false,
+        procesoResultado,
         guardadoEnBD: true,
         procesoHistorial: [...s.procesoHistorial, { hora: new Date().toLocaleTimeString('es-EC'), pallets: resultado.total_pallets, cajas: resultado.total_cajas, aux: resultado.total_auxiliares }]
       }));
-      this.guardarEnSQL(resultado);
     } catch (e) {
       this.logMsg('❌ Error durante el procesamiento: ' + e, 'err');
       this.setState({ procesarBusy: false, procesoResultado: { ok: false, titulo: 'Error durante el procesamiento', detalle: String(e) } });
