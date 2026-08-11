@@ -684,7 +684,7 @@ class Component extends DCLogic {
       return;
     }
 
-    const CHUNK_SIZE = 40;
+    const CHUNK_SIZE = 15;
     const chunks = [];
     for (let i = 0; i < rows.length; i += CHUNK_SIZE) chunks.push(rows.slice(i, i + CHUNK_SIZE));
     this.logMsg('Guardando ' + rows.length + ' líneas en Propick_Asignaciones (en ' + chunks.length + ' lotes de hasta ' + CHUNK_SIZE + ')...', 'info');
