@@ -871,10 +871,24 @@ class Component extends DCLogic {
     this.setState(s => ({ consoleLines: [...s.consoleLines, { id: this._lineId, cls: cls || '', text: '[' + t + '] ' + msg }] }));
   }
 
+  async waitForLoadPyodide(timeoutMs = 20000, intervalMs = 150) {
+    const start = Date.now();
+    while (typeof window.loadPyodide !== 'function') {
+      if (Date.now() - start > timeoutMs) return false;
+      await new Promise(r => setTimeout(r, intervalMs));
+    }
+    return true;
+  }
+
   async initPyodide() {
     try {
       this.logMsg('Iniciando entorno Python (Pyodide)...', 'info');
-      this.pyodide = await loadPyodide();
+      if (typeof window.loadPyodide !== 'function') {
+        this.logMsg('El script del motor aún no está listo, esperando (red lenta)...', 'info');
+        const ok = await this.waitForLoadPyodide();
+        if (!ok) throw new Error('El script de Pyodide no cargó a tiempo. Verifica tu conexión a internet y recarga la página.');
+      }
+      this.pyodide = await window.loadPyodide();
       this.logMsg('Cargando pandas...', 'info');
       await this.pyodide.loadPackage(['pandas']);
       try {
