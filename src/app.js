@@ -686,34 +686,53 @@ class Component extends DCLogic {
       return { status: 'error', detalle };
     }
 
-    const CHUNK_SIZE = 20;
-    const chunks = [];
-    for (let i = 0; i < rows.length; i += CHUNK_SIZE) chunks.push(rows.slice(i, i + CHUNK_SIZE));
-    this.logMsg('Guardando ' + rows.length + ' líneas en Propick_Asignaciones (en ' + chunks.length + ' lotes de hasta ' + CHUNK_SIZE + ')...', 'info');
-    let guardadas = 0;
+    this.logMsg('Enviando ' + rows.length + ' líneas a Propick_Asignaciones...', 'info');
     try {
-      for (let i = 0; i < chunks.length; i++) {
-        const resp = await this.fetchConTimeout(Component.POST_ASIGNACIONES_FLOW_URL, { ProcesoID: procesoId, Rows: chunks[i] }, 90000);
-        if (!resp.ok) {
-          let bodyText = '';
-          try { bodyText = await resp.text(); } catch (e2) { /* sin cuerpo de respuesta */ }
-          console.error('POST_Asignaciones falló (lote ' + (i + 1) + '/' + chunks.length + ')', resp.status, bodyText, chunks[i][0]);
-          throw new Error('lote ' + (i + 1) + '/' + chunks.length + ' — HTTP ' + resp.status + (bodyText ? ' — ' + bodyText.slice(0, 500) : ''));
-        }
-        guardadas += chunks[i].length;
-        this.logMsg('✅ Lote ' + (i + 1) + '/' + chunks.length + ' guardado (' + guardadas + '/' + rows.length + ' líneas)', 'ok');
+      const resp = await this.fetchConTimeout(Component.POST_ASIGNACIONES_FLOW_URL, { ProcesoID: procesoId, Rows: rows }, 30000);
+      if (!resp.ok) {
+        let bodyText = '';
+        try { bodyText = await resp.text(); } catch (e2) { /* sin cuerpo de respuesta */ }
+        console.error('POST_Asignaciones falló', resp.status, bodyText, rows[0]);
+        throw new Error('HTTP ' + resp.status + (bodyText ? ' — ' + bodyText.slice(0, 500) : ''));
       }
+    } catch (e) {
+      const msg = e.name === 'AbortError' ? 'tiempo de espera agotado enviando el lote' : e.message;
+      this.logMsg('❌ Error enviando el lote a Propick_Asignaciones: ' + msg, 'err');
+      const detalle = 'Encabezado guardado, pero falló el envío del lote — ' + msg;
+      this.setState({ sqlSyncStatus: 'error', sqlSyncDetalle: detalle });
+      return { status: 'error', detalle };
+    }
+
+    this.logMsg('📨 Lote recibido por el flujo, confirmando guardado en la base...', 'info');
+    this.setState({ sqlSyncDetalle: 'Confirmando guardado (0/' + rows.length + ')...' });
+    const check = await this.esperarAsignacionesGuardadas(procesoId, rows.length);
+    if (check.done) {
       const okDetalle = procesoId + ' · ' + rows.length + ' líneas guardadas';
+      this.logMsg('✅ ' + rows.length + ' líneas confirmadas en Propick_Asignaciones', 'ok');
       this.setState({ sqlSyncStatus: 'ok', sqlSyncDetalle: okDetalle });
       return { status: 'ok', detalle: okDetalle };
-    } catch (e) {
-      const msg = e.name === 'AbortError' ? 'tiempo de espera agotado' : e.message;
-      this.logMsg('⚠️ Error guardando el lote en Propick_Asignaciones: ' + msg, 'err');
-      const detalle = 'Encabezado guardado, ' + guardadas + '/' + rows.length + ' líneas guardadas — ' + msg;
-      const status = guardadas > 0 ? 'partial' : 'error';
-      this.setState({ sqlSyncStatus: status, sqlSyncDetalle: detalle });
-      return { status, detalle };
     }
+    const detalle = 'Encabezado y lote enviados (' + (check.count || 0) + '/' + rows.length + ' confirmadas), pero no se pudo confirmar el guardado completo a tiempo. Puede seguir procesándose en segundo plano — revisa más tarde.';
+    this.logMsg('⚠️ ' + detalle, 'err');
+    this.setState({ sqlSyncStatus: 'partial', sqlSyncDetalle: detalle });
+    return { status: 'partial', detalle };
+  }
+
+  async esperarAsignacionesGuardadas(procesoId, esperadas, { intervalMs = 5000, timeoutMs = 600000 } = {}) {
+    const start = Date.now();
+    const idNorm = String(procesoId).trim().toLowerCase();
+    while (Date.now() - start < timeoutMs) {
+      await new Promise(r => setTimeout(r, intervalMs));
+      try {
+        const rows = await this.getRows(Component.GET_ASIGNACIONES_FLOW_URL);
+        const count = rows.filter(r => String(r.ProcesoID ?? r.procesoID ?? '').trim().toLowerCase() === idNorm).length;
+        this.setState({ sqlSyncDetalle: 'Confirmando guardado (' + count + '/' + esperadas + ')...' });
+        if (count >= esperadas) return { done: true, count };
+      } catch (e) {
+        /* error transitorio consultando; se reintenta en el próximo ciclo */
+      }
+    }
+    return { done: false, count: null };
   }
 
   async loadProductos() {
