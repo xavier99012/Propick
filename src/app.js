@@ -664,7 +664,11 @@ class Component extends DCLogic {
     this.logMsg('Guardando encabezado en Propick_Subida_de_arme...', 'info');
     try {
       const resp = await this.fetchConTimeout(Component.POST_SUBIDA_ARME_FLOW_URL, header);
-      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      if (!resp.ok) {
+        let bodyText = '';
+        try { bodyText = await resp.text(); } catch (e2) { /* sin cuerpo de respuesta */ }
+        throw new Error('HTTP ' + resp.status + (bodyText ? ' — ' + bodyText.slice(0, 500) : ''));
+      }
       this.logMsg('✅ Encabezado guardado (ProcesoID ' + procesoId + ')', 'ok');
     } catch (e) {
       const msg = e.name === 'AbortError' ? 'tiempo de espera agotado (posible URL de flujo sin firma/sig o inactivo)' : e.message;
@@ -683,7 +687,12 @@ class Component extends DCLogic {
     this.logMsg('Guardando ' + rows.length + ' líneas en Propick_Asignaciones (en un solo lote)...', 'info');
     try {
       const resp = await this.fetchConTimeout(Component.POST_ASIGNACIONES_FLOW_URL, { ProcesoID: procesoId, Rows: rows }, 60000);
-      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      if (!resp.ok) {
+        let bodyText = '';
+        try { bodyText = await resp.text(); } catch (e2) { /* sin cuerpo de respuesta */ }
+        console.error('POST_Asignaciones falló', resp.status, bodyText, rows[0]);
+        throw new Error('HTTP ' + resp.status + (bodyText ? ' — ' + bodyText.slice(0, 500) : ''));
+      }
       this.logMsg('✅ ' + rows.length + ' líneas guardadas en Propick_Asignaciones', 'ok');
       this.setState({ sqlSyncStatus: 'ok', sqlSyncDetalle: procesoId + ' · ' + rows.length + ' líneas guardadas' });
     } catch (e) {
